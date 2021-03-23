@@ -1,0 +1,53 @@
+*** S BEGIN
+fmod PID is
+  sort PersonID .
+  ops alice bob : -> PersonID [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops tokyo osaka fukuoka : -> Location [ctor] .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable component
+  op name[_]:_ : PersonID Location -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{exm1} END
+
+*** I_{exm1}
+fmod INIT-SOUP is
+  pr SOUP .
+  op init : -> Soup .
+  eq init = (name[alice]: tokyo) (name[bob]: tokyo) .
+endfm
+
+*** T_{exm1}
+mod TRANSITION is
+  pr SOUP .
+  var I : PersonID .
+  rl [t2o] : (name[I]: tokyo)
+          => (name[I]: osaka) .
+  rl [o2t] : (name[I]: osaka)
+          => (name[I]: tokyo) .
+  rl [t2f] : (name[I]: tokyo)
+          => (name[I]: fukuoka) .
+  rl [f2t] : (name[I]: fukuoka)
+          => (name[I]: tokyo) .
+endm
+
+mod CITIES-CHECK is
+  pr INIT-SOUP .
+  pr TRANSITION .
+  vars P1 P2 : PersonID .
+  var S : Soup .
+endm
+
+*** ex ch2.2 SM M = <S,I,T>
+search in CITIES-CHECK : init =>* (name[P1]: osaka) (name[P2]: osaka) .

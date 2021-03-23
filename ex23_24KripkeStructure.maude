@@ -1,0 +1,82 @@
+*** S_{exm2} BEGIN
+fmod PID is
+  sort PersonID .
+  ops alice bob : -> PersonID [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops tokyo osaka fukuoka : -> Location [ctor] .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable components
+  op name[_]:_ : PersonID Location -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{exm2} END
+
+*** I_{exm2}
+fmod INIT-SOUP is
+  pr SOUP .
+  op init : -> Soup .
+  eq init = (name[alice]: tokyo) (name[bob]: tokyo) .
+endfm
+
+*** T_{exm2}
+mod TRANSITION is
+  pr SOUP .
+  var I : PersonID .
+  rl [t2o] : (name[I]: tokyo)
+          => (name[I]: osaka) .
+  rl [o2t] : (name[I]: osaka)
+          => (name[I]: tokyo) .
+  rl [t2f] : (name[I]: tokyo)
+          => (name[I]: fukuoka) .
+  rl [f2t] : (name[I]: fukuoka)
+          => (name[I]: tokyo) .
+endm
+
+in model-checker .
+*** P_{exm2}, L_{exm2}
+mod PREDICATES is
+  pr TRANSITION .
+  inc SATISFACTION .
+  subsort Soup < State .
+  *** P_{exm2}
+  op inTokyo : PersonID -> Prop .
+  op inOsaka : PersonID -> Prop .
+  op inFukuoka : PersonID -> Prop .
+  var I : PersonID .
+  var S : Soup .
+  var PR : Prop .
+  *** L_{exm2}
+  eq (name[I]: tokyo) S   |= inTokyo(I) = true .
+  eq (name[I]: osaka) S   |= inOsaka(I) = true .
+  eq (name[I]: fukuoka) S |= inFukuoka(I) = true .
+  eq S |= PR = false [owise] .
+endm
+
+mod 3CITIES-CHECK is
+  pr INIT-SOUP .
+  inc PREDICATES .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+  vars P1 P2 : PersonID .
+  var S : Soup .
+  *** op varphi : -> Formula . 
+  *** eq varphi = [] <> inFukuoka(alice) .
+  op liveness : -> Formula . 
+  eq liveness = (<> inFukuoka(alice)) /\ (<> inFukuoka(bob)) .
+endm
+
+*** ex ch2.2 SM M = <S,I,T>
+*** search in 3CITIES-CHECK : init =>* (name[P1]: osaka) (name[P2]: osaka) .
+*** red in 3CITIES-CHECK : modelCheck(init, [] ~(inFukuoka(alice) /\ inFukuoka(bob))) .
+*** red in 3CITIES-CHECK : modelCheck(init, varphi) .
+red in 3CITIES-CHECK : modelCheck(init, liveness) .

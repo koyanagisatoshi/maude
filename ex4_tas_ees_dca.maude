@@ -1,0 +1,167 @@
+*** S_{ees, TAS} BEGIN
+fmod PID is
+  sort Pid .
+  ops p1 p2 p3 p4 p5 p6 p7 p8 : -> Pid [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops rs ws cs : -> Location [ctor] .
+endfm
+
+*** Labeled Event lE
+fmod LEVENT is
+  pr PID .
+  sort LEvent .
+  op notran : -> LEvent . *** notran = iota
+  ops dose want try exit : Pid -> LEvent .
+endfm
+
+fmod LOCK is
+  sort Lock .
+  subsort Lock < Bool .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  pr LOCK .
+  pr LEVENT .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable components
+  op pc[_]:_ : Pid Location -> OComp [ctor] .
+  op locked:_ : Bool -> OComp [ctor] .
+  op le:_ : LEvent -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{ees, TAS} END
+
+*** I_{ees, TAS}
+fmod INIT-SOUP is
+  pr SOUP .
+  ops init2 init3 init4 init5 init6 init7 init8 : -> Soup .
+  eq init2 = (pc[p1]: rs) (pc[p2]: rs) (locked: false) (le: notran) .
+  eq init3 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (locked: false) (le: notran) .
+  eq init4 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (locked: false) (le: notran) .
+  eq init5 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (locked: false) (le: notran) .
+  eq init6 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (locked: false) (le: notran) .
+  eq init7 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (pc[p7]: rs) (locked: false) (le: notran) .
+  eq init8 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (pc[p7]: rs) (pc[p8]: rs) (locked: false) (le: notran) .
+endfm
+
+*** T_{ees, TAS}
+mod TRANSITION is
+  pr SOUP .
+  var B : Lock .
+  var I : Pid .
+  var E : LEvent .
+  rl [dose] : (pc[I]: rs) (le: E)
+           => (pc[I]: rs) (le: dose(I)) .
+  rl [want] : (pc[I]: rs) (le: E)
+           => (pc[I]: ws) (le: want(I)) .
+  rl [try]  : (pc[I]: ws) (locked: false) (le: E)
+           => (pc[I]: cs) (locked: true) (le: try(I)) .
+  rl [exit] : (pc[I]: cs) (locked: true) (le: E)
+           => (pc[I]: rs) (locked: false) (le: exit(I)) .
+endm
+
+in model-checker .
+mod TAS-PROP is
+  pr TRANSITION .
+  inc SATISFACTION .
+  subsort Soup < State .
+*** P_{ees, TAS}
+  ops wait crit : Pid -> Prop .
+  ops enabled applied : LEvent -> Prop .
+*** L_{ees, TAS}
+  var I : Pid .
+  var S : Soup .
+  var PR : Prop .
+  var E : LEvent .
+  eq (pc[I]: ws) S |= wait(I) = true .
+  eq (pc[I]: cs) S |= crit(I) = true .
+  eq (pc[I]: rs) S |= enabled(dose(I)) = true .
+  eq (pc[I]: rs) S |= enabled(want(I)) = true .
+  eq (pc[I]: ws) (locked: false) S |= enabled(try(I)) = true .
+  eq (pc[I]: cs) S |= enabled(exit(I)) = true .
+  eq (le: E) S   |= applied(E) = true .
+  eq S |= PR = false [owise] .
+endm
+
+mod TAS-FORMULA is
+  pr INIT-SOUP .
+  inc TAS-PROP .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+  var I : Pid .
+  var E : LEvent .
+  ops wf sf : LEvent -> Formula .
+  ops lofree : Pid -> Formula .
+  eq wf(E) = (<> [] enabled(E)) -> ([] <> applied(E)) .
+  eq sf(E) = ([] <> enabled(E)) -> ([] <> applied(E)) .
+  eq lofree(I) = wait(I) |-> crit(I) .
+endm
+
+mod PROC2MC is
+  pr TAS-FORMULA .
+  var S : Soup .
+  ops lofree2 wfair2 sfair2 qfair2 : -> Formula .
+  eq lofree2 = lofree(p1) /\ lofree(p2) .
+  eq wfair2 = wf(dose(p1)) /\ wf(dose(p2)) /\
+              wf(want(p1)) /\ wf(want(p2)) /\
+              wf(try(p1)) /\ wf(try(p2)) /\
+              wf(exit(p1)) /\ wf(exit(p2)) .
+  eq sfair2 = sf(dose(p1)) /\ sf(dose(p2)) /\
+              sf(want(p1)) /\ sf(want(p2)) /\
+              sf(try(p1)) /\ sf(try(p2)) /\
+              sf(exit(p1)) /\ sf(exit(p2)) .
+endm
+
+*** red in PROC2MC : modelCheck(init2, [] ~(crit(p1) /\ crit(p2)) ) .
+*** reduce in PROC2MC : modelCheck(init2, lofree2) .
+*** rewrites: 122
+*** result ModelCheckResult: counterexample(
+*** {locked: false le: notran (pc[p1]: rs) pc[p2]: rs,'dose}
+*** {locked: false le: dose(p1) (pc[p1]: rs) pc[p2]: rs, 'dose}
+*** {locked: false le: dose(p2) (pc[p1]: rs) pc[p2]: rs,'want}
+*** {locked: false le: want(p1) (pc[p1]: ws) pc[p2]: rs,'dose},
+*** {locked: false le: dose(p2) (pc[p1]: ws) pc[p2]: rs,'want}
+*** {locked: false le: want(p2) (pc[p1]: ws) pc[p2]: ws,'try}
+*** {locked: true le: try(p2) (pc[p1]: ws) pc[p2]: cs,'exit}
+*** {locked: false le: exit(p2) (pc[p1]: ws) pc[p2]: rs,'dose})
+*** reduce in PROC2MC : modelCheck(init2, wfair2 -> lofree2) .
+*** rewrites: 16197
+*** result ModelCheckResult: counterexample(
+*** {locked: false le: notran (pc[p1]: rs) pc[p2]: rs,'dose}
+*** {locked: false le: dose(p1) (pc[p1]: rs) pc[p2]: rs, 'dose}
+*** {locked: false le: dose(p2) (pc[p1]: rs) pc[p2]: rs,'want}
+*** {locked: false le: want(p1) (pc[p1]: ws) pc[p2]: rs,'dose},
+*** {locked: false le: dose(p2) (pc[p1]: ws) pc[p2]: rs,'want}
+*** {locked: false le: want(p2) (pc[p1]: ws) pc[p2]: ws,'try}
+*** {locked: true le: try(p2) (pc[p1]: ws) pc[p2]: cs,'exit}
+*** {locked: false le: exit(p2) (pc[p1]: ws) pc[p2]: rs,'dose})
+*** reduce in PROC2MC : modelCheck(init2, sfair2 -> lofree2) .
+*** rewrites: 195666
+*** result Bool: true
+*** DCA
+red in PROC2MC : modelCheck(init2, sf(try(p1)) /\  wf(exit(p2)) -> lofree(p1)) .
+red in PROC2MC : modelCheck(init2, sf(try(p2)) /\  wf(exit(p1)) -> lofree(p2)) .
+red in PROC2MC : modelCheck(init2, lofree(p1) /\ lofree(p2) -> lofree2) .
+
+mod PROC3MC is
+  pr TAS-FORMULA .
+  ops lofree3 : -> Formula .
+  eq lofree3 = lofree(p1) /\ lofree(p2) /\ lofree(p3) .
+endm
+
+*** reduce in PROC3MC : modelCheck(init3, sfair3 -> lofree3) .
+red in TAS-FORMULA : modelCheck(init3, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) -> lofree(p1)) .
+red in TAS-FORMULA : modelCheck(init3, sf(try(p2)) /\  wf(exit(p3)) /\ wf(exit(p1)) -> lofree(p2)) .
+red in TAS-FORMULA : modelCheck(init3, sf(try(p3)) /\  wf(exit(p1)) /\ wf(exit(p2)) -> lofree(p3)) .
+*** red in TAS-FORMULA : modelCheck(init4, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) /\ wf(exit(p4)) -> lofree(p1)) .
+*** red in TAS-FORMULA : modelCheck(init5, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) /\ wf(exit(p4)) /\ wf(exit(p5)) -> lofree(p1)) .
+*** red in TAS-FORMULA : modelCheck(init6, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) /\ wf(exit(p4)) /\ wf(exit(p5)) /\  wf(exit(p6)) -> lofree(p1)) .
+*** red in TAS-FORMULA : modelCheck(init7, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) /\ wf(exit(p4)) /\ wf(exit(p5)) /\  wf(exit(p6))/\  wf(exit(p7)) -> lofree(p1)) .
+*** red in TAS-FORMULA : modelCheck(init8, sf(try(p1)) /\  wf(exit(p2)) /\ wf(exit(p3)) /\ wf(exit(p4)) /\ wf(exit(p5)) /\ wf(exit(p6)) /\ wf(exit(p7)) /\ wf(exit(p8)) -> lofree(p1)) .

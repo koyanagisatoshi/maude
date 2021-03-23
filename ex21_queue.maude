@@ -1,0 +1,29 @@
+fmod PID is
+  sort PersonID .
+  ops alice bob cathy david emma : -> PersonID [ctor] .
+endfm
+
+fmod QUEUE is
+  pr PID .
+  sort Queue .
+  op empty : -> Queue [ctor] .
+  op _|_ : PersonID Queue -> Queue [ctor] .
+  op enq : Queue PersonID -> Queue .
+  op deq : Queue -> Queue .
+  var Q : Queue .
+  vars X Y : PersonID .
+  eq enq(empty,X) = X | empty .
+  eq enq((Y | Q),X) = Y | enq(Q,X) .
+  eq deq(empty) = empty .
+  eq deq((X | Q)) = Q .
+endfm
+
+fmod WAITINGLIST is
+  pr QUEUE .
+  op wl : -> Queue .
+  eq wl = enq(enq(enq(empty, alice), david), emma) .
+endfm
+
+red in WAITINGLIST : empty .
+red in WAITINGLIST : wl .
+red in WAITINGLIST : deq(wl) .

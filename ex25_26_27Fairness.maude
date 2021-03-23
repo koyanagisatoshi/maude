@@ -1,0 +1,114 @@
+*** S_{exm3} BEGIN
+fmod PID is
+  sort PersonID .
+  ops alice bob : -> PersonID [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops tokyo osaka fukuoka : -> Location [ctor] .
+endfm
+
+*** Labeled Event lE
+fmod LEVENT is
+  pr PID .
+  sort LEvent .
+  op notran : -> LEvent . *** notran = iota
+  op t2o : PersonID -> LEvent .
+  op o2t : PersonID -> LEvent .
+  op t2f : PersonID -> LEvent .
+  op f2t : PersonID -> LEvent .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  pr LEVENT .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable components
+  op name[_]:_ : PersonID Location -> OComp [ctor] .
+  op tran:_ : LEvent -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{exm3} END
+
+*** I_{exm3}
+fmod INIT-SOUP is
+  pr SOUP .
+  op init : -> Soup .
+  eq init = (name[alice]: tokyo) (name[bob]: tokyo) (tran: notran) .
+endfm
+
+*** T_{exm3}
+mod TRANSITION is
+  pr SOUP .
+  var E : LEvent .
+  var I : PersonID .
+  rl [t2o] : (name[I]: tokyo) (tran: E)
+          => (name[I]: osaka) (tran: t2o(I)) .
+  rl [o2t] : (name[I]: osaka) (tran: E)
+          => (name[I]: tokyo) (tran: o2t(I)) .
+  rl [t2f] : (name[I]: tokyo) (tran: E)
+          => (name[I]: fukuoka) (tran: t2f(I)) .
+  rl [f2t] : (name[I]: fukuoka) (tran: E)
+          => (name[I]: tokyo) (tran: f2t(I)) .
+endm
+
+in model-checker .
+*** P_{exm3}, L_{exm3}
+mod PREDICATES is
+  pr TRANSITION .
+  inc SATISFACTION .
+  subsort Soup < State .
+  *** P_{exm3}
+  op inTokyo : PersonID -> Prop .
+  op inOsaka : PersonID -> Prop .
+  op inFukuoka : PersonID -> Prop .
+  op enabled : LEvent -> Prop .
+  op applied : LEvent -> Prop .
+  var I : PersonID .
+  var S : Soup .
+  var PR : Prop .
+  var E : LEvent .
+  *** L_{exm3}
+  eq (name[I]: tokyo) S   |= inTokyo(I) = true .
+  eq (name[I]: osaka) S   |= inOsaka(I) = true .
+  eq (name[I]: fukuoka) S |= inFukuoka(I) = true .
+  eq (name[I]: tokyo) S   |= enabled(t2o(I)) = true .
+  eq (name[I]: tokyo) S   |= enabled(t2f(I)) = true .
+  eq (name[I]: osaka) S   |= enabled(o2t(I)) = true .
+  eq (name[I]: fukuoka) S |= enabled(f2t(I)) = true .
+  eq (tran: E) S          |= applied(E) = true .
+  eq S |= PR = false [owise] .
+endm
+
+mod 3CITIES-CHECK is
+  pr INIT-SOUP .
+  inc PREDICATES .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+  vars P1 P2 : PersonID .
+  var S : Soup .
+  var E : LEvent .
+  op liveness : -> Formula . 
+  eq liveness = (<> inFukuoka(alice)) /\ (<> inFukuoka(bob)) .
+  op wf : LEvent -> Formula .
+  eq wf(E) = (<> [] enabled(E)) -> ([] <> applied(E)) .
+  op wfair : -> Formula .
+  eq wfair = wf(t2o(alice)) /\ wf(t2o(bob)) /\
+             wf(o2t(alice)) /\ wf(o2t(bob)) /\
+             wf(t2f(alice)) /\ wf(t2f(bob)) /\
+             wf(f2t(alice)) /\ wf(f2t(bob)) .
+  op sf : LEvent -> Formula .
+  eq sf(E) = ([] <> enabled(E)) -> ([] <> applied(E)) .
+  op sfair : -> Formula .
+  eq sfair = sf(t2o(alice)) /\ sf(t2o(bob)) /\
+             sf(o2t(alice)) /\ sf(o2t(bob)) /\
+             sf(t2f(alice)) /\ sf(t2f(bob)) /\
+             sf(f2t(alice)) /\ sf(f2t(bob)) .
+endm
+
+*** red in 3CITIES-CHECK : modelCheck(init, wfair -> liveness) .
+*** red in 3CITIES-CHECK : modelCheck(init, sfair -> liveness) .

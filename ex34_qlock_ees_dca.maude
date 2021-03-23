@@ -1,0 +1,297 @@
+*** S_{ees, Qlock} BEGIN
+fmod PID is
+  sort Pid .
+  ops p1 p2 p3 p4 p5 p6 p7 p8 : -> Pid [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops rs ws cs : -> Location [ctor] .
+endfm
+
+*** Labeled Event lE
+fmod LEVENT is
+  pr PID .
+  sort LEvent .
+  op notran : -> LEvent . *** notran = iota
+  ops dose want try exit : Pid -> LEvent .
+endfm
+
+fmod QUEUE is
+  pr PID .
+  sort Queue .
+  op empty : -> Queue [ctor] .
+  op _|_ : Pid Queue -> Queue [ctor] .
+  op enq : Queue Pid -> Queue .
+  op deq : Queue -> Queue .
+  var Q : Queue .
+  vars X Y : Pid .
+  eq enq(empty,X) = X | empty .
+  eq enq(Y | Q,X) = Y | enq(Q,X) .
+  eq deq(empty) = empty .
+  eq deq(X | Q) = Q .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  pr QUEUE .
+  pr LEVENT .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable components
+  op pc[_]:_ : Pid Location -> OComp [ctor] .
+  op queue:_ : Queue -> OComp [ctor] .
+  op le:_ : LEvent -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{ees, Qlock} END
+
+*** I_{ees, Qlock}
+fmod INIT-SOUP is
+  pr SOUP .
+  ops init2 init3 init4 init5 init6 init7 init8 : -> Soup .
+  eq init2 = (pc[p1]: rs) (pc[p2]: rs) (queue: empty) (le: notran) .
+  eq init3 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (queue: empty) (le: notran) .
+  eq init4 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (queue: empty) (le: notran) .
+  eq init5 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (queue: empty) (le: notran) .
+  eq init6 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (queue: empty) (le: notran) .
+  eq init7 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (pc[p7]: rs) (queue: empty) (le: notran) .
+  eq init8 = (pc[p1]: rs) (pc[p2]: rs) (pc[p3]: rs) (pc[p4]: rs) (pc[p5]: rs) (pc[p6]: rs) (pc[p7]: rs) (pc[p8]: rs) (queue: empty) (le: notran) .
+endfm
+
+*** T_{ees, Qlock}
+mod TRANSITION is
+  pr SOUP .
+  var Q : Queue .
+  var I : Pid .
+  var E : LEvent .
+  rl [dose] : (pc[I]: rs) (le: E)
+           => (pc[I]: rs) (le: dose(I)) .
+  rl [want] : (pc[I]: rs) (queue: Q) (le: E)
+           => (pc[I]: ws) (queue: enq(Q,I)) (le: want(I)) .
+  rl [try]  : (pc[I]: ws) (queue: (I | Q)) (le: E)
+           => (pc[I]: cs) (queue: (I | Q)) (le: try(I)) .
+  rl [exit] : (pc[I]: cs) (queue: Q) (le: E)
+           => (pc[I]: rs) (queue: deq(Q)) (le: exit(I)) .
+endm
+
+in model-checker .
+*** P_{ees, Qlock}, L_{ees, Qlock}
+mod QLOCK-PROP is
+  pr TRANSITION .
+  inc SATISFACTION .
+  subsort Soup < State .
+*** P_{ees, Qlock}
+  ops wait crit : Pid -> Prop .
+  ops enabled applied : LEvent -> Prop .
+  op top? : Pid -> Prop .
+*** L_{ees, Qlock}
+  var I : Pid .
+  var Q : Queue .
+  var S : Soup .
+  var PR : Prop .
+  var E : LEvent .
+  eq (pc[I]: ws) S |= wait(I) = true .
+  eq (pc[I]: cs) S |= crit(I) = true .
+  eq (pc[I]: rs) S |= enabled(dose(I)) = true .
+  eq (pc[I]: rs) S |= enabled(want(I)) = true .
+  eq (pc[I]: ws) (queue: (I | Q)) S |= enabled(try(I)) = true .
+  eq (pc[I]: cs) S |= enabled(exit(I)) = true .
+  eq (le: E) S   |= applied(E) = true .
+  eq (queue: (I | Q)) S |= top?(I) = true .
+  eq S |= PR = false [owise] .
+endm
+
+mod QLOCK-FORMULA is
+  pr INIT-SOUP .
+  inc QLOCK-PROP .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+  var E : LEvent .
+  var I : Pid .
+  op wf : LEvent -> Formula .
+  op dt : Pid -> Formula .
+  eq wf(E) = (<> [] enabled(E)) -> ([] <> applied(E)) .
+  eq dt(I) = top?(I) |-> ~ top?(I) .
+endm
+
+mod PROC2MC is
+  pr QLOCK-FORMULA .
+  ops mutex2 lofree2 fair2 qfair2 : -> Formula .
+  eq mutex2 = [] ~(crit(p1) /\ crit(p2)) .
+  eq lofree2 = (wait(p1) |-> crit(p1)) /\ (wait(p2) |-> crit(p2)) .
+  eq fair2 = wf(dose(p1)) /\ wf(dose(p2)) /\
+             wf(want(p1)) /\ wf(want(p2)) /\
+             wf(try(p1)) /\ wf(try(p2)) /\
+             wf(exit(p1)) /\ wf(exit(p2)) .
+  eq qfair2 = dt(p1) /\ dt(p2) .
+endm
+
+*** Non-DCA (Process is 2)
+red in PROC2MC : modelCheck(init2, fair2 -> lofree2) .
+*** DCA (Process is 2)
+red in PROC2MC : modelCheck(init2, wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC2MC : modelCheck(init2, wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC2MC : modelCheck(init2, qfair2 -> lofree2) .
+
+eof
+
+*** mod PROC3MC is
+***   pr QLOCK-FORMULA .
+***   ops mutex3 lofree3 fair3 qfair3 : -> Formula .
+***   eq mutex3 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3)) .
+***   eq lofree3 = (wait(p1) |-> crit(p1)) /\
+***                (wait(p2) |-> crit(p2)) /\
+***                (wait(p3) |-> crit(p3)) .
+***   eq fair3 = wf(dose(p1)) /\ wf(dose(p2)) /\ wf(dose(p3)) /\ 
+***              wf(want(p1)) /\ wf(want(p2)) /\ wf(want(p3)) /\ 
+***              wf(try(p1))  /\ wf(try(p2))  /\ wf(try(p3))  /\ 
+***              wf(exit(p1)) /\ wf(exit(p2)) /\ wf(exit(p3)) .
+***   eq qfair3 = dt(p1) /\ dt(p2) /\ dt(p3) .
+*** endm
+*** red in PROC3MC : modelCheck(init3, fair3 -> lofree3) .
+*** red in PROC3MC :
+***   modelCheck(init3,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+*** red in PROC3MC :
+***   modelCheck(init3,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+*** red in PROC3MC :
+***   modelCheck(init3,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+*** red in PROC3MC : modelCheck(init3,qfair3 -> lofree3) .
+
+eof
+
+mod PROC4MC is
+  pr QLOCK-FORMULA .
+  ops mutex4 lofree4 fair4 qfair4 : -> Formula .
+  eq mutex4 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3) /\ crit(p4)) .
+  eq lofree4 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) /\
+               (wait(p3) |-> crit(p3)) /\
+               (wait(p4) |-> crit(p4)) .
+  eq qfair4 = dt(p1) /\ dt(p2) /\ dt(p3) /\ dt(p4) .
+endm
+red in PROC4MC :
+  modelCheck(init4,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC4MC :
+  modelCheck(init4,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC4MC :
+  modelCheck(init4,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+red in PROC4MC :
+  modelCheck(init4,wf(try(p4)) /\ wf(exit(p4)) -> dt(p4)) .
+red in PROC4MC : modelCheck(init4,qfair4 -> lofree4) .
+
+mod PROC5MC is
+  pr QLOCK-FORMULA .
+  ops mutex5 lofree5 fair5 qfair5 : -> Formula .
+  eq mutex5 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3) /\ crit(p4) /\ crit(p5)) .
+  eq lofree5 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) /\
+               (wait(p3) |-> crit(p3)) /\
+               (wait(p4) |-> crit(p4)) /\
+               (wait(p5) |-> crit(p5)) .
+  eq qfair5 = dt(p1) /\ dt(p2) /\ dt(p3) /\ dt(p4) /\ dt(p5) .
+endm
+red in PROC5MC :
+  modelCheck(init5,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC5MC :
+  modelCheck(init5,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC5MC :
+  modelCheck(init5,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+red in PROC5MC :
+  modelCheck(init5,wf(try(p4)) /\ wf(exit(p4)) -> dt(p4)) .
+red in PROC5MC :
+  modelCheck(init5,wf(try(p5)) /\ wf(exit(p5)) -> dt(p5)) .
+red in PROC5MC : modelCheck(init5, qfair5 -> lofree5) .
+
+mod PROC6MC is
+  pr QLOCK-FORMULA .
+  ops mutex6 lofree6 fair6 qfair6 : -> Formula .
+  eq mutex6 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3) /\ crit(p4) /\ crit(p5) /\ crit(p6)) .
+  eq lofree6 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) /\
+               (wait(p3) |-> crit(p3)) /\
+               (wait(p4) |-> crit(p4)) /\
+               (wait(p5) |-> crit(p5)) /\
+               (wait(p6) |-> crit(p6)) .
+  eq qfair6 = dt(p1) /\ dt(p2) /\ dt(p3) /\ dt(p4) /\ dt(p5) /\ dt(p6) .
+endm
+red in PROC6MC :
+  modelCheck(init6,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC6MC :
+  modelCheck(init6,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC6MC :
+  modelCheck(init6,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+red in PROC6MC :
+  modelCheck(init6,wf(try(p4)) /\ wf(exit(p4)) -> dt(p4)) .
+red in PROC6MC :
+  modelCheck(init6,wf(try(p5)) /\ wf(exit(p5)) -> dt(p5)) .
+red in PROC6MC :
+  modelCheck(init6,wf(try(p6)) /\ wf(exit(p6)) -> dt(p6)) .
+red in PROC6MC : modelCheck(init6, qfair6 -> lofree6) .
+
+mod PROC7MC is
+  pr QLOCK-FORMULA .
+  ops mutex7 lofree7 fair7 qfair7 : -> Formula .
+  eq mutex7 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3) /\ crit(p4) /\
+                   crit(p5) /\ crit(p6) /\ crit(p7)) .
+  eq lofree7 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) /\
+               (wait(p3) |-> crit(p3)) /\
+               (wait(p4) |-> crit(p4)) /\
+               (wait(p5) |-> crit(p5)) /\
+               (wait(p6) |-> crit(p6)) /\
+               (wait(p7) |-> crit(p7)) .
+  eq qfair7 = dt(p1) /\ dt(p2) /\ dt(p3) /\ dt(p4) /\
+              dt(p5) /\ dt(p6) /\ dt(p7) .
+endm
+red in PROC7MC :
+  modelCheck(init7,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p4)) /\ wf(exit(p4)) -> dt(p4)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p5)) /\ wf(exit(p5)) -> dt(p5)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p6)) /\ wf(exit(p6)) -> dt(p6)) .
+red in PROC7MC :
+  modelCheck(init7,wf(try(p7)) /\ wf(exit(p7)) -> dt(p7)) .
+red in PROC7MC : modelCheck(init7, qfair7 -> lofree7) .
+
+mod PROC8MC is
+  pr QLOCK-FORMULA .
+  ops mutex8 lofree8 fair8 qfair8 : -> Formula .
+  eq mutex8 = [] ~(crit(p1) /\ crit(p2) /\ crit(p3) /\ crit(p4) /\
+                   crit(p5) /\ crit(p6) /\ crit(p7) /\ crit(p8)) .
+  eq lofree8 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) /\
+               (wait(p3) |-> crit(p3)) /\
+               (wait(p4) |-> crit(p4)) /\
+               (wait(p5) |-> crit(p5)) /\
+               (wait(p6) |-> crit(p6)) /\
+               (wait(p7) |-> crit(p7)) /\
+               (wait(p8) |-> crit(p8)) .
+  eq qfair8 = dt(p1) /\ dt(p2) /\ dt(p3) /\ dt(p4) /\
+              dt(p5) /\ dt(p6) /\ dt(p7) /\ dt(p8) .
+endm
+red in PROC8MC :
+  modelCheck(init8,wf(try(p1)) /\ wf(exit(p1)) -> dt(p1)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p2)) /\ wf(exit(p2)) -> dt(p2)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p3)) /\ wf(exit(p3)) -> dt(p3)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p4)) /\ wf(exit(p4)) -> dt(p4)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p5)) /\ wf(exit(p5)) -> dt(p5)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p6)) /\ wf(exit(p6)) -> dt(p6)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p7)) /\ wf(exit(p7)) -> dt(p7)) .
+red in PROC8MC :
+  modelCheck(init8,wf(try(p8)) /\ wf(exit(p8)) -> dt(p8)) .
+red in PROC8MC : modelCheck(init8, qfair8 -> lofree8) .

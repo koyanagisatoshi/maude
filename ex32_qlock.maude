@@ -1,0 +1,99 @@
+*** S_{Qlock} BEGIN
+fmod PID is
+  sort Pid .
+  ops p1 p2 : -> Pid [ctor] .
+endfm
+
+fmod LOCATION is
+  sort Location .
+  ops rs ws cs : -> Location [ctor] .
+endfm
+
+fmod QUEUE is
+  pr PID .
+  sort Queue .
+  op empty : -> Queue [ctor] .
+  op _|_ : Pid Queue -> Queue [ctor] .
+  op enq : Queue Pid -> Queue .
+  op deq : Queue -> Queue .
+  var Q : Queue .
+  vars X Y : Pid .
+  eq enq(empty,X) = X | empty .
+  eq enq(Y | Q,X) = Y | enq(Q,X) .
+  eq deq(empty) = empty .
+  eq deq(X | Q) = Q .
+endfm
+
+fmod SOUP is
+  pr PID .
+  pr LOCATION .
+  pr QUEUE .
+  sorts OComp Soup .
+  subsort OComp < Soup .
+  *** observable components
+  op pc[_]:_ : Pid Location -> OComp [ctor] .
+  op queue:_ : Queue -> OComp [ctor] .
+  *** soup
+  op __ : Soup Soup -> Soup [ctor assoc comm] .
+endfm
+*** S_{Qlock} END
+*** I_{Qlock}
+fmod INIT-SOUP is
+  pr SOUP .
+  op init2 : -> Soup .
+  eq init2 = (pc[p1]: rs) (pc[p2]: rs) (queue: empty) .
+endfm
+*** T_{Qlock}
+mod TRANSITION is
+  pr SOUP .
+  var Q : Queue .
+  var I : Pid .
+  rl [dose] : (pc[I]: rs)
+           => (pc[I]: rs) .
+  rl [want] : (pc[I]: rs) (queue: Q)
+           => (pc[I]: ws) (queue: enq(Q,I)) .
+  rl [try]  : (pc[I]: ws) (queue: (I | Q))
+           => (pc[I]: cs) (queue: (I | Q)) .
+  rl [exit] : (pc[I]: cs) (queue: Q)
+           => (pc[I]: rs) (queue: deq(Q)) .
+endm
+in model-checker .
+*** P_{Qlock}, L_{Qlock}
+mod QLOCK-PROP is
+  pr TRANSITION .
+  inc SATISFACTION .
+  subsort Soup < State .
+  *** P_{Qlock}
+  ops wait crit : Pid -> Prop .
+  *** L_{Qlock}
+  var I : Pid .
+  var S : Soup .
+  var PR : Prop .
+  eq (pc[I]: ws) S |= wait(I) = true .
+  eq (pc[I]: cs) S |= crit(I) = true .
+  eq S |= PR = false [owise] .
+endm
+mod QLOCK-FORMULA is
+  pr INIT-SOUP .
+  inc QLOCK-PROP .
+  inc MODEL-CHECKER .
+  inc LTL-SIMPLIFIER .
+***  var S : Soup .
+***  op mutex2 : -> Formula .
+***  eq mutex2 = [] ~(crit(p1) /\ crit(p2)) .
+  op lofree2 : -> Formula .
+  eq lofree2 = (wait(p1) |-> crit(p1)) /\
+               (wait(p2) |-> crit(p2)) .
+endm
+red in QLOCK-FORMULA : modelCheck(init2, lofree2) .
+*** red in QLOCK-FORMULA : modelCheck(init2, mutex2) .
+
+***
+*** search [1] in QLOCK-FORMULA : init2 =>* (pc[p1]: cs) (pc[p2]: cs) S .
+***
+
+***
+*** search [1] in QLOCK-FORMULA : init2 =>! S .
+*** no solutions meaning that there is no deadlock state and equally
+*** the binary relation over states is total
+***
